@@ -125,3 +125,13 @@ if __name__ == "__main__":
         print(f"{emotion}:")
         for level, value in levels.items():
             print(f"  {level}: {value:.2f}")
+            
+            # Example usage
+if __name__ == "__main__":
+    sentiment_score = 0.632  # Example sentiment score
+    memberships = get_membership_values(sentiment_score)
+    
+    for emotion, levels in memberships.items():
+        print(f"{emotion}:")
+        for level, value in levels.items():
+            print(f"  {level}: {value:.2f}")
