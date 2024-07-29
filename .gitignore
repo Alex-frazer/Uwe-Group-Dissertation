@@ -1,3 +1,4 @@
 # ignore all glove files 
 glove.*
 GoogleNews-vectors-negative300.*
+code/logs/events.out.tfevents.*
