@@ -24,8 +24,12 @@ def doAnfis(processed_data):
     to_keep = ['exclamation_score', 'question_score', 'ellipsis_score', 'comma_score', 'period_score',
            'Subjectivity Score', 'polarity_score', 'afinn_score', 'Negation Score', 'Sarcasm Score']
     fuzzy_data = processed_data[to_keep]
-    X = fuzzy_data.values
-    Y = processed_data['Emotion'].values
+    
+    mapping_dict = {value: index for index, value in enumerate(processed_data['Emotion'].unique())}
+    processed_data['Emotion_mapped'] = processed_data['Emotion'].map(mapping_dict)
+
+    X = fuzzy_data.values    
+    Y = processed_data['Emotion_mapped'].values
     print(Y)
     
     mf = [
