@@ -1,360 +1,275 @@
-import pandas as pd
-import string
-import re
-import nltk
-nltk.download('wordnet')
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-import contractions
-from transformers import BertTokenizer, AutoTokenizer
-from tqdm import tqdm
-from transformers import pipeline, AutoModelForSequenceClassification
-from sklearn.svm import SVC
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
-from transformers import BertTokenizer, BertModel
-import logging as log
-import torch
-import torch.nn as nn
-from torchCRF import CRF
-from afinn import Afinn
-
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-import skfuzzy as fuzz
-import sys
-sys.path.insert(0, './anfis_twmeggs/')
-import anfis_twmeggs as anfis
-from anfis import ANFIS
-
-
-def getData():
-    malta_loc_18 = '../data/Malta-Budget-2018-dataset-v1.csv'
-    malta_loc_19 = '../data/Malta-Budget-2019-dataset-v1.csv'
-    malta_loc_20 = '../data/Malta-Budget-2020-dataset-v1.csv'
-
-    malta_data_18 = pd.read_csv(malta_loc_18)
-    malta_data_19 = pd.read_csv(malta_loc_19)
-    malta_data_20 = pd.read_csv(malta_loc_20)
-
-    malta_data_19 = malta_data_19.rename(columns={'Off-topic ':'Off-topic'})
-    combined_data = pd.concat([malta_data_18, malta_data_19, malta_data_20], ignore_index=True)
-
-    clean_data = combined_data.dropna(subset=['Online Post Text'])
-    clean_data = clean_data.drop(['Twitter ID', 'Related Online Post ID', 'Source ID','Off-topic'], axis=1)
-    clean_data = clean_data[clean_data['Language'] == 0] # get all data that is in english 
-    clean_data = clean_data.drop(['Language'], axis=1)
-    clean_data = clean_data.rename(columns={'Online Post ID':'ID','Online Post Text':'Text'})
-
-    return clean_data
-
-def processData(clean_data):
-
-    processed_data = clean_data.copy(deep=True)
-
-    def remove_special_characters(text):
-        pattern = re.compile(r'[^a-zA-Z\s]')
-        return pattern.sub('', text)
-
-    # Remove URLs and HTML tags
-    processed_data['Raw_Text'] = processed_data['Text']
-
-    processed_data['Text'] = processed_data['Text'].str.replace(r'http\S+|www\S+|https\S+', '', regex=True)
-    processed_data['Text'] = processed_data['Text'].str.replace(r'<.*?>', '', regex=True)
-
-    # Expand contractions
-    processed_data['Text'] = processed_data['Text'].apply(lambda x: contractions.fix(x))
-
-    # Convert to lowercase
-    processed_data['Text'] = processed_data['Text'].str.lower()
-
-    # Remove punctuation
-    processed_data['Text'] = processed_data['Text'].str.replace(f"[{string.punctuation}]", " ", regex=True)
-
-    # Remove numbers
-    processed_data['Text'] = processed_data['Text'].str.replace(r'\d+', '', regex=True)
-
-    # Remove special characters
-    processed_data['Text'] = processed_data['Text'].apply(remove_special_characters)
-
-    # Remove stop words
-    stop_words = set(stopwords.words('english'))
-    processed_data['Text'] = processed_data['Text'].apply(lambda x: ' '.join(word for word in x.split() if word not in stop_words))
-
-    # Remove extra whitespace
-    processed_data['Text'] = processed_data['Text'].str.strip()
-    processed_data['Text'] = processed_data['Text'].str.replace(r'\s+', ' ', regex=True)
-
-    # Lemmatize
-    lemmatizer = WordNetLemmatizer()
-    processed_data['Text'] = processed_data['Text'].apply(lambda x: ' '.join(lemmatizer.lemmatize(word) for word in x.split()))
-
-    # Tokenize
-    # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased') #30522 
-    tokenizer = AutoTokenizer.from_pretrained('nlptown/bert-base-multilingual-uncased-sentiment')
-    tokenizer.model_max_length = 100
-    tokenizer_features = 30522
-    processed_data['tokens'] = processed_data['Text'].apply(lambda x: tokenizer.tokenize(x)) 
-
-    max_words = processed_data['Text'].apply(lambda x: len(x.split())).max()
-
-    max_tokens = processed_data['tokens'].apply(lambda x: len(x)).max()
-
-    def encode_texts(texts, tokenizer, max_len): 
-        input_ids = []
-        attention_masks = []
-
-        for text in texts:
-            encoded = tokenizer.encode_plus(
-                text,
-                add_special_tokens=True,
-                max_length=max_len,
-                padding='max_length',
-                return_attention_mask=True,
-                return_token_type_ids=False,
-                truncation=True
-            )
-            input_ids.append(encoded['input_ids'])
-            attention_masks.append(encoded['attention_mask'])
-        
-        return input_ids, attention_masks
-
-    processed_data['padded'], processed_data['masks'] = encode_texts(processed_data['Text'].tolist(), tokenizer, 100)
-
-    return processed_data
-
-
-def getPunctuation(processed_data):
-    def count_punctuation(text, tokens):
-        exclamation_count = len(re.findall(r'!', text))
-        question_count = len(re.findall(r'\?', text))
-        ellipsis_count = len(re.findall(r'\.\.\.', text))
-        comma_count = len(re.findall(r',', text))
-        period_count = len(re.findall(r'\. ', text))
-        token_count = len(tokens)
-        if token_count == 0:
-            token_count = 1
-        return pd.Series({
-            'exclamation_count': exclamation_count,
-            'question_count': question_count,
-            'ellipsis_count': ellipsis_count,
-            'comma_count': comma_count,
-            'period_count': period_count,
-            'exclamation_score': exclamation_count / token_count,
-            'question_score': question_count / token_count,
-            'ellipsis_score': ellipsis_count / token_count,
-            'comma_score': comma_count / token_count,
-            'period_score': period_count / token_count
-        })
-
-    processed_data = processed_data.join(
-        processed_data.apply(lambda row: count_punctuation(row['Raw_Text'], row['tokens']), axis=1)
-    )
-    return processed_data
-    
-
-def getPolarity(processed_data):
-    tokenizer = AutoTokenizer.from_pretrained('nlptown/bert-base-multilingual-uncased-sentiment')
-    model = AutoModelForSequenceClassification.from_pretrained('nlptown/bert-base-multilingual-uncased-sentiment')
-    sentiment_analyzer = pipeline('sentiment-analysis', model=model, tokenizer=tokenizer)
-
-    def get_sentiment(tokens):
-        total_score = 0
-        result = sentiment_analyzer(tokens)
-        if len(result) == 0:
-            return 0.0
-        for r in result:
-            total_score += r['score']
-        return total_score / len(result)
-
-    processed_data['polarity_score'] = processed_data['tokens'].apply(get_sentiment)
-
-    return processed_data
-
-def getSubjectivity(processed_data):
-    loggers = [log.getLogger(name) for name in log.root.manager.loggerDict]
-    for logger in loggers:
-        if "transformers" in logger.name.lower():
-            logger.setLevel(log.ERROR)
-
-    # Load BERT tokenizer and model
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    bert_model = BertModel.from_pretrained('bert-base-uncased')
-
-    # Tokenize and convert to BERT embeddings
-    def get_bert_embeddings(texts):
-        inputs = tokenizer(texts.tolist(), return_tensors='pt', padding=True, truncation=True)
-        with torch.no_grad():
-            outputs = bert_model(**inputs)
-        return outputs.last_hidden_state.mean(dim=1).numpy()
-
-    X = get_bert_embeddings(processed_data['Text'])
-    y = processed_data['Subjectivity']
-
-    # Train SVM classifier
-    clf = make_pipeline(StandardScaler(), SVC(kernel='linear', probability=True))
-    clf.fit(X, y)
-
-    # Get the decision function values or probabilities
-    subjectivity_scores = clf.decision_function(X)
-    processed_data['Subjectivity Score'] = subjectivity_scores
-    return processed_data
-
-def getSarcasm(processed_data):
-    class SarcasmLSTM(nn.Module):
-        def __init__(self, bert_model, hidden_dim, output_dim, num_layers):
-            super(SarcasmLSTM, self).__init__()
-            self.bert = bert_model
-            self.lstm = nn.LSTM(bert_model.config.hidden_size, hidden_dim, num_layers, batch_first=True)
-            self.fc = nn.Linear(hidden_dim, output_dim)
-            self.sigmoid = nn.Sigmoid()
-
-        def forward(self, inputs):
-            with torch.no_grad():
-                bert_output = self.bert(**inputs).last_hidden_state
-            lstm_output, _ = self.lstm(bert_output)
-            logits = self.fc(lstm_output[:, -1, :])
-            return self.sigmoid(logits)
-
-    # Load BERT tokenizer and model
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    bert_model = BertModel.from_pretrained('bert-base-uncased')
-
-    # Initialize the LSTM model
-    sarcasm_model = SarcasmLSTM(bert_model, hidden_dim=256, output_dim=1, num_layers=2)
-
-    # Tokenize and predict sarcasm for the entire dataset
-    inputs = tokenizer(processed_data['Text'].tolist(), return_tensors='pt', padding=True, truncation=True)
-    with torch.no_grad():
-        sarcasm_prob = sarcasm_model(inputs).numpy()
-
-    processed_data['Sarcasm Score'] = sarcasm_prob.flatten()  # Keep the raw probability
-    return processed_data
-
-def getNegation(processed_data):
-    class LSTM_CRF(nn.Module):
-        def __init__(self, bert_model, hidden_dim, tagset_size):
-            super(LSTM_CRF, self).__init__()
-            self.bert = bert_model
-            self.lstm = nn.LSTM(bert_model.config.hidden_size, hidden_dim, batch_first=True, bidirectional=True)
-            self.hidden2tag = nn.Linear(hidden_dim * 2, tagset_size)
-            self.crf = CRF(tagset_size, batch_first=True)
-
-        def forward(self, inputs):
-            with torch.no_grad():
-                bert_output = self.bert(**inputs).last_hidden_state
-            lstm_output, _ = self.lstm(bert_output)
-            emissions = self.hidden2tag(lstm_output)
-            return emissions
-
-        def predict(self, inputs):
-            emissions = self(inputs)
-            return self.crf.decode(emissions), emissions
-
-    # Load BERT tokenizer and model
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    bert_model = BertModel.from_pretrained('bert-base-uncased')
-
-    # Initialize the LSTM-CRF model
-    negation_model = LSTM_CRF(bert_model, hidden_dim=128, tagset_size=3)  # Assume 3 tags (e.g., "O", "NEG", "POS")
-
-    # Tokenize and predict negation for the entire dataset
-    inputs = tokenizer(processed_data['Text'].tolist(), return_tensors='pt', padding=True, truncation=True)
-
-    negation_tags, negation_scores = negation_model.predict(inputs)
-
-    # Extract the highest score for negation tag for each sentence
-    processed_data['Negation Score'] = [torch.max(score[:, 1]).item() for score in negation_scores]  # Assuming index 1 is the "NEG" tag
-
-    return processed_data
-
-def getAfinn(processed_data):
-    afinn = Afinn()
-    processed_data['afinn_score'] = processed_data['Raw_Text'].apply(lambda x: afinn.score(x))
-
-    return processed_data
-
-def doAnfis(processed_data):
-    to_keep = ['exclamation_score', 'question_score', 'ellipsis_score', 'comma_score', 'period_score',
-           'Subjectivity Score', 'polarity_score', 'afinn_score', 'Negation Score', 'Sarcasm Score']
-    fuzzy_data = processed_data[to_keep]
-    X = fuzzy_data.values
-    Y = processed_data['Emotion'].values
-    
-    mf = [
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # exclamation_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # question_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # ellipsis_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # comma_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # period_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # Subjectivity Score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # polarity_score
-        [['gaussmf',{'mean':-2,'sigma':1}],
-        ['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}],
-        ['gaussmf',{'mean':2,'sigma':1}]], # afinn_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # Negation Score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]]] #Sarcasm Score
-    
-    mfc = anfis.membershipfunction.MemFuncs(mf)
-
-    anf = ANFIS(X, y, mfc)
-
-    anf.trainHybridJangOffLine(epochs=2)
-    
-    anf.plotErrors()
-    
-    anf.memFuncs
-    
-    # print 'linguistic variables' in our membership functions
-    # since we have defined 4 MF for each variable we will have 0,1,2,3 as values
-    # for example, they could be low=0, medium=1, high=2, very high=3
-    print('Linguistic variables:',anf.memFuncsByVariable)
-
-    # print rules order
-    # this is all the possible combinations of rules
-    # e.g., [2,1] = a activates linguistic variable 2, b activates linguistic value 1 
-    print('Combinations:', anf.rules)
-
-    # print consequents
-    print('Consequents:', anf.consequents)
-    print('# of consenquents:',len(anf.consequents))
-    anf.plotResults()
-    return anf
-    
-
-clean_data = getData()
-processed_data = processData(clean_data=clean_data)
-log.debug("processed")
-processed_data = getPunctuation(processed_data=processed_data)
-log.debug("punctuaton counted")
-processed_data = getPolarity(processed_data=processed_data)
-log.debug("polarity calculated")
-processed_data = getSubjectivity(processed_data=processed_data)
-log.debug("subjectivity calculated")
-processed_data = getSarcasm(processed_data=processed_data)
-log.debug("sarcasm calculated")
-processed_data = getAfinn(processed_data=processed_data)
-log.debug("afinn calculated")
-anfis = doAnfis(processed_data=processed_data)
-log.debug("Anfis completed")
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Apr 03 07:30:34 2014
+
+@author: tim.meggs
+"""
+import itertools
+import numpy as np
+import mfDerivs
+import membershipfunction
+import copy
+
+class ANFIS:
+    """Class to implement an Adaptive Network Fuzzy Inference System: ANFIS"
+
+    Attributes:
+        X
+        Y
+        XLen
+        memClass
+        memFuncs
+        memFuncsByVariable
+        rules
+        consequents
+        errors
+        memFuncsHomo
+        trainingType
+
+
+    """
+
+    def __init__(self, X, Y, memFunction):
+        self.X = np.array(copy.copy(X))
+        self.Y = np.array(copy.copy(Y))
+        self.XLen = len(self.X)
+        self.memClass = copy.deepcopy(memFunction)
+        self.memFuncs = self.memClass.MFList
+        self.memFuncsByVariable = [[x for x in range(len(self.memFuncs[z]))] for z in range(len(self.memFuncs))]
+        self.rules = np.array(list(itertools.product(*self.memFuncsByVariable)))
+        self.consequents = np.empty(self.Y.ndim * len(self.rules) * (self.X.shape[1] + 1))
+        self.consequents.fill(0)
+        self.errors = np.empty(0)
+        self.memFuncsHomo = all(len(i)==len(self.memFuncsByVariable[0]) for i in self.memFuncsByVariable)
+        self.trainingType = 'Not trained yet'
+
+    def LSE(self, A, B, initialGamma = 1000.):
+        coeffMat = A
+        rhsMat = B
+        S = np.eye(coeffMat.shape[1])*initialGamma
+        x = np.zeros((coeffMat.shape[1],1)) # need to correct for multi-dim B
+        for i in range(len(coeffMat[:,0])):
+            a = coeffMat[i,:]
+            b = np.array(rhsMat[i])
+            S = S - (np.array(np.dot(np.dot(np.dot(S,np.matrix(a).transpose()),np.matrix(a)),S)))/(1+(np.dot(np.dot(S,a),a)))
+            x = x + (np.dot(S,np.dot(np.matrix(a).transpose(),(np.matrix(b)-np.dot(np.matrix(a),x)))))
+        return x
+
+    def trainHybridJangOffLine(self, epochs=5, tolerance=1e-5, initialGamma=1000, k=0.01):
+
+        self.trainingType = 'trainHybridJangOffLine'
+        convergence = False
+        epoch = 1
+
+        while (epoch < epochs) and (convergence is not True):
+
+            #layer four: forward pass
+            [layerFour, wSum, w] = forwardHalfPass(self, self.X)
+
+            #layer five: least squares estimate
+            layerFive = np.array(self.LSE(layerFour,self.Y,initialGamma))
+            self.consequents = layerFive
+            layerFive = np.dot(layerFour,layerFive)
+
+            #error
+            error = np.sum((self.Y-layerFive.T)**2)
+            print('current error: '+ str(error))
+            average_error = np.average(np.absolute(self.Y-layerFive.T))
+            self.errors = np.append(self.errors,error)
+
+            if len(self.errors) != 0:
+                if self.errors[len(self.errors)-1] < tolerance:
+                    convergence = True
+
+            # back propagation
+            if convergence is not True:
+                cols = range(len(self.X[0,:]))
+                dE_dAlpha = list(backprop(self, colX, cols, wSum, w, layerFive) for colX in range(self.X.shape[1]))
+
+
+            if len(self.errors) >= 4:
+                if (self.errors[-4] > self.errors[-3] > self.errors[-2] > self.errors[-1]):
+                    k = k * 1.1
+
+            if len(self.errors) >= 5:
+                if (self.errors[-1] < self.errors[-2]) and (self.errors[-3] < self.errors[-2]) and (self.errors[-3] < self.errors[-4]) and (self.errors[-5] > self.errors[-4]):
+                    k = k * 0.9
+
+            ## handling of variables with a different number of MFs
+            t = []
+            for x in range(len(dE_dAlpha)):
+                for y in range(len(dE_dAlpha[x])):
+                    for z in range(len(dE_dAlpha[x][y])):
+                        t.append(dE_dAlpha[x][y][z])
+
+            eta = k / np.abs(np.sum(t))
+
+            if(np.isinf(eta)):
+                eta = k
 
+            ## handling of variables with a different number of MFs
+            dAlpha = copy.deepcopy(dE_dAlpha)
+            if not(self.memFuncsHomo):
+                for x in range(len(dE_dAlpha)):
+                    for y in range(len(dE_dAlpha[x])):
+                        for z in range(len(dE_dAlpha[x][y])):
+                            dAlpha[x][y][z] = -eta * dE_dAlpha[x][y][z]
+            else:
+                dAlpha = -eta * np.array(dE_dAlpha)
 
 
+            for varsWithMemFuncs in range(len(self.memFuncs)):
+                for MFs in range(len(self.memFuncsByVariable[varsWithMemFuncs])):
+                    paramList = sorted(self.memFuncs[varsWithMemFuncs][MFs][1])
+                    for param in range(len(paramList)):
+                        self.memFuncs[varsWithMemFuncs][MFs][1][paramList[param]] = self.memFuncs[varsWithMemFuncs][MFs][1][paramList[param]] + dAlpha[varsWithMemFuncs][MFs][param]
+            epoch = epoch + 1
 
 
+        self.fittedValues = predict(self,self.X)
+        self.residuals = self.Y - self.fittedValues[:,0]
+
+        return self.fittedValues
+
+
+    def plotErrors(self):
+        if self.trainingType == 'Not trained yet':
+            print(self.trainingType)
+        else:
+            import matplotlib.pyplot as plt
+            plt.plot(range(len(self.errors)),self.errors,'ro', label='errors')
+            plt.ylabel('error')
+            plt.xlabel('epoch')
+            plt.show()
+
+    def plotMF(self, x, inputVar):
+        import matplotlib.pyplot as plt
+        from skfuzzy import gaussmf, gbellmf, sigmf
+
+        for mf in range(len(self.memFuncs[inputVar])):
+            if self.memFuncs[inputVar][mf][0] == 'gaussmf':
+                y = gaussmf(x,**self.memClass.MFList[inputVar][mf][1])
+            elif self.memFuncs[inputVar][mf][0] == 'gbellmf':
+                y = gbellmf(x,**self.memClass.MFList[inputVar][mf][1])
+            elif self.memFuncs[inputVar][mf][0] == 'sigmf':
+                y = sigmf(x,**self.memClass.MFList[inputVar][mf][1])
+
+            plt.plot(x,y,'r')
+
+        plt.show()
+
+    def plotResults(self):
+        if self.trainingType == 'Not trained yet':
+            print(self.trainingType)
+        else:
+            import matplotlib.pyplot as plt
+            plt.plot(range(len(self.fittedValues)),self.fittedValues,'r', label='trained')
+            plt.plot(range(len(self.Y)),self.Y,'b', label='original')
+            plt.legend(loc='upper left')
+            plt.show()
+
+
+
+def forwardHalfPass(ANFISObj, Xs):
+    layerFour = np.empty(0,)
+    wSum = []
+
+    for pattern in range(len(Xs[:,0])):
+        #layer one
+        layerOne = ANFISObj.memClass.evaluateMF(Xs[pattern,:])
+
+        #layer two
+        miAlloc = [[layerOne[x][ANFISObj.rules[row][x]] for x in range(len(ANFISObj.rules[0]))] for row in range(len(ANFISObj.rules))]
+        layerTwo = np.array([np.product(x) for x in miAlloc]).T
+        if pattern == 0:
+            w = layerTwo
+        else:
+            w = np.vstack((w,layerTwo))
+
+        #layer three
+        wSum.append(np.sum(layerTwo))
+        if pattern == 0:
+            wNormalized = layerTwo/wSum[pattern]
+        else:
+            wNormalized = np.vstack((wNormalized,layerTwo/wSum[pattern]))
+
+        #prep for layer four (bit of a hack)
+        layerThree = layerTwo/wSum[pattern]
+        rowHolder = np.concatenate([x*np.append(Xs[pattern,:],1) for x in layerThree])
+        layerFour = np.append(layerFour,rowHolder)
+
+    w = w.T
+    wNormalized = wNormalized.T
+
+    layerFour = np.array(np.array_split(layerFour,pattern + 1))
+
+    return layerFour, wSum, w
+
+
+def backprop(ANFISObj, columnX, columns, theWSum, theW, theLayerFive):
+
+    paramGrp = [0]* len(ANFISObj.memFuncs[columnX])
+    for MF in range(len(ANFISObj.memFuncs[columnX])):
+
+        parameters = np.empty(len(ANFISObj.memFuncs[columnX][MF][1]))
+        timesThru = 0
+        for alpha in sorted(ANFISObj.memFuncs[columnX][MF][1].keys()):
+
+            bucket3 = np.empty(len(ANFISObj.X))
+            for rowX in range(len(ANFISObj.X)):
+                varToTest = ANFISObj.X[rowX,columnX]
+                tmpRow = np.empty(len(ANFISObj.memFuncs))
+                tmpRow.fill(varToTest)
+
+                bucket2 = np.empty(ANFISObj.Y.ndim)
+                for colY in range(ANFISObj.Y.ndim):
+
+                    rulesWithAlpha = np.array(np.where(ANFISObj.rules[:,columnX]==MF))[0]
+                    adjCols = np.delete(columns,columnX)
+
+                    senSit = mfDerivs.partial_dMF(ANFISObj.X[rowX,columnX],ANFISObj.memFuncs[columnX][MF],alpha)
+                    # produces d_ruleOutput/d_parameterWithinMF
+                    dW_dAplha = senSit * np.array([np.prod([ANFISObj.memClass.evaluateMF(tmpRow)[c][ANFISObj.rules[r][c]] for c in adjCols]) for r in rulesWithAlpha])
+
+                    bucket1 = np.empty(len(ANFISObj.rules[:,0]))
+                    for consequent in range(len(ANFISObj.rules[:,0])):
+                        fConsequent = np.dot(np.append(ANFISObj.X[rowX,:],1.),ANFISObj.consequents[((ANFISObj.X.shape[1] + 1) * consequent):(((ANFISObj.X.shape[1] + 1) * consequent) + (ANFISObj.X.shape[1] + 1)),colY])
+                        acum = 0
+                        if consequent in rulesWithAlpha:
+                            acum = dW_dAplha[np.where(rulesWithAlpha==consequent)] * theWSum[rowX]
+
+                        acum = acum - theW[consequent,rowX] * np.sum(dW_dAplha)
+                        acum = acum / theWSum[rowX]**2
+                        bucket1[consequent] = fConsequent * acum
+
+                    sum1 = np.sum(bucket1)
+
+                    if ANFISObj.Y.ndim == 1:
+                        bucket2[colY] = sum1 * (ANFISObj.Y[rowX]-theLayerFive[rowX,colY])*(-2)
+                    else:
+                        bucket2[colY] = sum1 * (ANFISObj.Y[rowX,colY]-theLayerFive[rowX,colY])*(-2)
+
+                sum2 = np.sum(bucket2)
+                bucket3[rowX] = sum2
+
+            sum3 = np.sum(bucket3)
+            parameters[timesThru] = sum3
+            timesThru = timesThru + 1
+
+        paramGrp[MF] = parameters
+
+    return paramGrp
+
+
+def predict(ANFISObj, varsToTest):
+
+    [layerFour, wSum, w] = forwardHalfPass(ANFISObj, varsToTest)
+
+    #layer five
+    layerFive = np.dot(layerFour,ANFISObj.consequents)
+
+    return layerFive
+
+
+if __name__ == "__main__":
+    print("I am main!")
