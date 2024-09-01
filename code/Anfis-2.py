@@ -14,18 +14,19 @@ import os
 from anfis import ANFIS
 import membershipfunction
 
-log.basicConfig(
-    level=log.DEBUG,  # Set the logging level to DEBUG to capture all log messages
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Include timestamp, logger name, and log level in messages
-    handlers=[log.StreamHandler()]  # Ensure logs are sent to the console (stdout)
-)
+# log.basicConfig(
+#     level=log.DEBUG,  # Set the logging level to DEBUG to capture all log messages
+#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Include timestamp, logger name, and log level in messages
+#     handlers=[log.StreamHandler()]  # Ensure logs are sent to the console (stdout)
+# )
 
 def doAnfis(processed_data):
     to_keep = [
         # 'exclamation_score', 'question_score', 'ellipsis_score', 'comma_score', 'period_score',
-           'Subjectivity Score', 'polarity_score', 'afinn_score', 'Negation Score', 'Sarcasm Score'
+           'Subjectivity Score', 'polarity_score', 'afinn_score', 'Negation Score', 'Sarcasm Score', 'Irony Score'
            ]
     fuzzy_data = processed_data[to_keep]
+    print(fuzzy_data.head())
     
     mapping_dict = {value: index for index, value in enumerate(processed_data['Emotion'].unique())}
     processed_data['Emotion_mapped'] = processed_data['Emotion'].map(mapping_dict)
@@ -59,17 +60,19 @@ def doAnfis(processed_data):
         ['gaussmf',{'mean':1,'sigma':1}]], # Negation Score
         [['gaussmf',{'mean':-1,'sigma':1}],
         ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]] #Sarcasm Score
+        ['gaussmf',{'mean':1,'sigma':1}]], # Sarcasm Score
+        [['gaussmf',{'mean':-1,'sigma':1}],
+        ['gaussmf',{'mean':0,'sigma':1}],
+        ['gaussmf',{'mean':1,'sigma':1}]] # Irony Score
     ]
     
     
     mfc = membershipfunction.MemFuncs(mf)
-    log.debug("Memberships defined")
+    print("Memberships defined")
     anf = ANFIS(X, Y, mfc)
-    log.debug("Anfis Created")
+    print("Anfis Created")
     anf.trainHybridJangOffLine(epochs=20)
-    log.debug("Anfis Trained")
-    anf.plotErrors()
+    print("Anfis Trained")
     
     anf.memFuncs
     
@@ -86,13 +89,14 @@ def doAnfis(processed_data):
     # print consequents
     print('Consequents:', anf.consequents)
     print('# of consenquents:',len(anf.consequents))
+    anf.plotErrors()
     anf.plotResults()
     return anf
 
-if os.path.isfile('code/processed_data.csv'):
-    processed_data = pd.read_csv('code/processed_data.csv')
-    log.debug("Data loaded")
+if os.path.isfile('code/processed_data_V2.csv'):
+    processed_data = pd.read_csv('code/processed_data_V2.csv')
+    print("Data loaded")
     anfis = doAnfis(processed_data=processed_data)
-    log.debug("ANFIS completed")
+    print("ANFIS completed")
 else:
-    log.error("File 'processed_data.csv' not found in the current directory.")
+    print("File 'processed_data.csv' not found in the current directory.")
