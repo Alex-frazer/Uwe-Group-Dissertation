@@ -1,13 +1,14 @@
 import pandas as pd
 
 import logging as log
+from tqdm import tqdm 
 
 import skfuzzy as fuzz
 
 import skfuzzy.control as ctrl
 
 import sys
-# import os
+import os
 # sys.path.insert(0, './anfis_twmeggs/')
 # import anfis_twmeggs as anfis
 from anfis import ANFIS
@@ -25,6 +26,7 @@ def doAnfis(processed_data):
     fuzzy_data = processed_data[to_keep]
     X = fuzzy_data.values
     Y = processed_data['Emotion'].values
+    print(Y)
     
     mf = [
         [['gaussmf',{'mean':-1,'sigma':1}],
@@ -54,14 +56,13 @@ def doAnfis(processed_data):
         ['gaussmf',{'mean':0,'sigma':1}],
         ['gaussmf',{'mean':1,'sigma':1}]]] #Sarcasm Score
     
+    
     mfc = membershipfunction.MemFuncs(mf)
-    
-    
-
+    log.debug("Memberships defined")
     anf = ANFIS(X, Y, mfc)
-
+    log.debug("Anfis Created")
     anf.trainHybridJangOffLine(epochs=20)
-    
+    log.debug("Anfis Trained")
     anf.plotErrors()
     
     anf.memFuncs
@@ -83,7 +84,7 @@ def doAnfis(processed_data):
     return anf
 
 if os.path.isfile('code/processed_data.csv'):
-    processed_data = pd.read_csv('code/processed_data.csv')
+    processed_data = pd.read_csv('code/processed_data.csv', nrows=20)
     log.debug("Data loaded")
     anfis = doAnfis(processed_data=processed_data)
     log.debug("ANFIS completed")

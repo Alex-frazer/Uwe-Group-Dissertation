@@ -1,3 +1,0 @@
-import anfis
-import membershipfunction
-

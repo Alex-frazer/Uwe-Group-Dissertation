@@ -9,6 +9,7 @@ import numpy as np
 import mfDerivs
 import membershipfunction
 import copy
+from tqdm import tqdm
 
 class ANFIS:
     """Class to implement an Adaptive Network Fuzzy Inference System: ANFIS"
@@ -56,11 +57,11 @@ class ANFIS:
         return x
 
     def trainHybridJangOffLine(self, epochs=5, tolerance=1e-5, initialGamma=1000, k=0.01):
-
         self.trainingType = 'trainHybridJangOffLine'
         convergence = False
         epoch = 1
-
+        progress_bar = tqdm(total=epochs, desc="Processing")
+        
         while (epoch < epochs) and (convergence is not True):
 
             #layer four: forward pass
@@ -124,8 +125,10 @@ class ANFIS:
                     for param in range(len(paramList)):
                         self.memFuncs[varsWithMemFuncs][MFs][1][paramList[param]] = self.memFuncs[varsWithMemFuncs][MFs][1][paramList[param]] + dAlpha[varsWithMemFuncs][MFs][param]
             epoch = epoch + 1
+            progress_bar.update(1)
+            print(f'Epoch {epoch} complete')
 
-
+        progress_bar.close()
         self.fittedValues = predict(self,self.X)
         self.residuals = self.Y - self.fittedValues[:,0]
 
