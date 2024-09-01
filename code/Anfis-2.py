@@ -7,9 +7,9 @@ import skfuzzy as fuzz
 import skfuzzy.control as ctrl
 
 import sys
-import os
-sys.path.insert(0, './anfis_twmeggs/')
-import anfis_twmeggs as anfis
+# import os
+# sys.path.insert(0, './anfis_twmeggs/')
+# import anfis_twmeggs as anfis
 from anfis import ANFIS
 import membershipfunction
 
