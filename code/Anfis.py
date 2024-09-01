@@ -126,7 +126,6 @@ class ANFIS:
                         self.memFuncs[varsWithMemFuncs][MFs][1][paramList[param]] = self.memFuncs[varsWithMemFuncs][MFs][1][paramList[param]] + dAlpha[varsWithMemFuncs][MFs][param]
             epoch = epoch + 1
             progress_bar.update(1)
-            print(f'Epoch {epoch} complete')
 
         progress_bar.close()
         self.fittedValues = predict(self,self.X)

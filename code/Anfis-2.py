@@ -21,8 +21,10 @@ log.basicConfig(
 )
 
 def doAnfis(processed_data):
-    to_keep = ['exclamation_score', 'question_score', 'ellipsis_score', 'comma_score', 'period_score',
-           'Subjectivity Score', 'polarity_score', 'afinn_score', 'Negation Score', 'Sarcasm Score']
+    to_keep = [
+        # 'exclamation_score', 'question_score', 'ellipsis_score', 'comma_score', 'period_score',
+           'Subjectivity Score', 'polarity_score', 'afinn_score', 'Negation Score', 'Sarcasm Score'
+           ]
     fuzzy_data = processed_data[to_keep]
     
     mapping_dict = {value: index for index, value in enumerate(processed_data['Emotion'].unique())}
@@ -30,19 +32,18 @@ def doAnfis(processed_data):
 
     X = fuzzy_data.values    
     Y = processed_data['Emotion_mapped'].values
-    print(Y)
     
     mf = [
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # exclamation_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # question_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # ellipsis_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # comma_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # period_score
+        # [['gaussmf',{'mean':-1,'sigma':1}],
+        # ['gaussmf',{'mean':1,'sigma':1}]], # exclamation_score
+        # [['gaussmf',{'mean':-1,'sigma':1}],
+        # ['gaussmf',{'mean':1,'sigma':1}]], # question_score
+        # [['gaussmf',{'mean':-1,'sigma':1}],
+        # ['gaussmf',{'mean':1,'sigma':1}]], # ellipsis_score
+        # [['gaussmf',{'mean':-1,'sigma':1}],
+        # ['gaussmf',{'mean':1,'sigma':1}]], # comma_score
+        # [['gaussmf',{'mean':-1,'sigma':1}],
+        # ['gaussmf',{'mean':1,'sigma':1}]], # period_score
         [['gaussmf',{'mean':-1,'sigma':1}],
         ['gaussmf',{'mean':0,'sigma':1}],
         ['gaussmf',{'mean':1,'sigma':1}]], # Subjectivity Score
@@ -58,7 +59,8 @@ def doAnfis(processed_data):
         ['gaussmf',{'mean':1,'sigma':1}]], # Negation Score
         [['gaussmf',{'mean':-1,'sigma':1}],
         ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]]] #Sarcasm Score
+        ['gaussmf',{'mean':1,'sigma':1}]] #Sarcasm Score
+    ]
     
     
     mfc = membershipfunction.MemFuncs(mf)
@@ -88,7 +90,7 @@ def doAnfis(processed_data):
     return anf
 
 if os.path.isfile('code/processed_data.csv'):
-    processed_data = pd.read_csv('code/processed_data.csv', nrows=20)
+    processed_data = pd.read_csv('code/processed_data.csv')
     log.debug("Data loaded")
     anfis = doAnfis(processed_data=processed_data)
     log.debug("ANFIS completed")
