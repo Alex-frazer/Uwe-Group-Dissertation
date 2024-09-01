@@ -13,6 +13,12 @@ import anfis_twmeggs as anfis
 from anfis import ANFIS
 import membershipfunction
 
+log.basicConfig(
+    level=log.DEBUG,  # Set the logging level to DEBUG to capture all log messages
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Include timestamp, logger name, and log level in messages
+    handlers=[log.StreamHandler()]  # Ensure logs are sent to the console (stdout)
+)
+
 def doAnfis(processed_data):
     to_keep = ['exclamation_score', 'question_score', 'ellipsis_score', 'comma_score', 'period_score',
            'Subjectivity Score', 'polarity_score', 'afinn_score', 'Negation Score', 'Sarcasm Score']
@@ -83,8 +89,3 @@ if os.path.isfile('code/processed_data.csv'):
     log.debug("ANFIS completed")
 else:
     log.error("File 'processed_data.csv' not found in the current directory.")
-
-# processed_data = pd.read_csv('processed_data.csv')
-# log.debug("Data loaded")
-# anfis = doAnfis(processed_data=processed_data)
-# log.debug("Anfis completed")
