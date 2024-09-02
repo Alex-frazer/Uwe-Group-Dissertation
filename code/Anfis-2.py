@@ -21,9 +21,14 @@ import membershipfunction
 # )
 
 def doAnfis(processed_data):
+    #TODO: Consider Batch processing
+    
+    #TODO: feature analyis - which features are actually helpful. Correlation matrix 
+    
     to_keep = [
         # 'exclamation_score', 'question_score', 'ellipsis_score', 'comma_score', 'period_score',
-           'Subjectivity Score', 'polarity_score', 'afinn_score', 'Negation Score', 'Sarcasm Score', 'Irony Score'
+           'Subjectivity Score', 'polarity_score'
+           #, 'afinn_score', 'Negation Score', 'Sarcasm Score', 'Irony Score'
            ]
     fuzzy_data = processed_data[to_keep]
     print(fuzzy_data.head())
@@ -50,20 +55,20 @@ def doAnfis(processed_data):
         ['gaussmf',{'mean':1,'sigma':1}]], # Subjectivity Score
         [['gaussmf',{'mean':-1,'sigma':1}],
         ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # polarity_score
-        [['gaussmf',{'mean':-2,'sigma':1}],
-        ['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}],
-        ['gaussmf',{'mean':2,'sigma':1}]], # afinn_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # Negation Score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # Sarcasm Score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]] # Irony Score
+        ['gaussmf',{'mean':1,'sigma':1}]] # polarity_score
+        # [['gaussmf',{'mean':-2,'sigma':1}],
+        # ['gaussmf',{'mean':-1,'sigma':1}],
+        # ['gaussmf',{'mean':0,'sigma':1}],
+        # ['gaussmf',{'mean':1,'sigma':1}],
+        # ['gaussmf',{'mean':2,'sigma':1}]], # afinn_score
+        # [['gaussmf',{'mean':-1,'sigma':1}],
+        # ['gaussmf',{'mean':1,'sigma':1}]], # Negation Score
+        # [['gaussmf',{'mean':-1,'sigma':1}],
+        # ['gaussmf',{'mean':0,'sigma':1}],
+        # ['gaussmf',{'mean':1,'sigma':1}]], # Sarcasm Score
+        # [['gaussmf',{'mean':-1,'sigma':1}],
+        # ['gaussmf',{'mean':0,'sigma':1}],
+        # ['gaussmf',{'mean':1,'sigma':1}]] # Irony Score
     ]
     
     
