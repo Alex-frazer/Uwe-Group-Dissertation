@@ -2,16 +2,12 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-import logging as log
-from tqdm import tqdm 
-import skfuzzy as fuzz
-import skfuzzy.control as ctrl
-import sys
 import os
 # from anfis_twmeggs import ANFIS
 from anfis import ANFIS
+from anfis import predict
+import numpy as np
 import membershipfunction
-
 
 def doAnfis(X_train, X_test, Y_train, Y_test):
     # Define the membership functions for each feature
@@ -52,11 +48,15 @@ def doAnfis(X_train, X_test, Y_train, Y_test):
     # Train the model
     anf.trainHybridJangOffLine(epochs=10)
     
-    # Predict on the test set
-    predictions = anf.predict(X_test)
+    # Make predictions on the test set
+    predictions = predict(anf, X_test)
     
-    # Output the accuracy
-    accuracy = accuracy_score(Y_test, predictions)
+    # Post-process predictions to match Y_train/Y_test dimensions
+    # Rounding predictions to the nearest integer as the output should be categorical
+    predictions_rounded = np.rint(predictions).astype(int).flatten()
+    
+    # Accuracy calculation
+    accuracy = accuracy_score(Y_test, predictions_rounded)
     print(f"Accuracy: {accuracy * 100:.2f}%")
     
     # Optionally, plot errors and results
