@@ -14,22 +14,11 @@ import os
 from anfis import ANFIS
 import membershipfunction
 
-# log.basicConfig(
-#     level=log.DEBUG,  # Set the logging level to DEBUG to capture all log messages
-#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Include timestamp, logger name, and log level in messages
-#     handlers=[log.StreamHandler()]  # Ensure logs are sent to the console (stdout)
-# )
-
 def doAnfis(processed_data):
     #TODO: Consider Batch processing
     
-    #TODO: feature analyis - which features are actually helpful. Correlation matrix 
+    to_keep = ['obj_score', 'exclamation_score', 'question_score', 'joy_score', 'vader_neg', 'vader_pos']
     
-    to_keep = [
-        # 'exclamation_score', 'question_score', 'ellipsis_score', 'comma_score', 'period_score',
-           'Subjectivity Score', 'polarity_score'
-           #, 'afinn_score', 'Negation Score', 'Sarcasm Score', 'Irony Score'
-           ]
     fuzzy_data = processed_data[to_keep]
     print(fuzzy_data.head())
     
@@ -39,37 +28,68 @@ def doAnfis(processed_data):
     X = fuzzy_data.values    
     Y = processed_data['Emotion_mapped'].values
     
+    
     mf = [
-        # [['gaussmf',{'mean':-1,'sigma':1}],
-        # ['gaussmf',{'mean':1,'sigma':1}]], # exclamation_score
-        # [['gaussmf',{'mean':-1,'sigma':1}],
-        # ['gaussmf',{'mean':1,'sigma':1}]], # question_score
-        # [['gaussmf',{'mean':-1,'sigma':1}],
-        # ['gaussmf',{'mean':1,'sigma':1}]], # ellipsis_score
-        # [['gaussmf',{'mean':-1,'sigma':1}],
-        # ['gaussmf',{'mean':1,'sigma':1}]], # comma_score
-        # [['gaussmf',{'mean':-1,'sigma':1}],
-        # ['gaussmf',{'mean':1,'sigma':1}]], # period_score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]], # Subjectivity Score
-        [['gaussmf',{'mean':-1,'sigma':1}],
-        ['gaussmf',{'mean':0,'sigma':1}],
-        ['gaussmf',{'mean':1,'sigma':1}]] # polarity_score
-        # [['gaussmf',{'mean':-2,'sigma':1}],
-        # ['gaussmf',{'mean':-1,'sigma':1}],
-        # ['gaussmf',{'mean':0,'sigma':1}],
-        # ['gaussmf',{'mean':1,'sigma':1}],
-        # ['gaussmf',{'mean':2,'sigma':1}]], # afinn_score
-        # [['gaussmf',{'mean':-1,'sigma':1}],
-        # ['gaussmf',{'mean':1,'sigma':1}]], # Negation Score
-        # [['gaussmf',{'mean':-1,'sigma':1}],
-        # ['gaussmf',{'mean':0,'sigma':1}],
-        # ['gaussmf',{'mean':1,'sigma':1}]], # Sarcasm Score
-        # [['gaussmf',{'mean':-1,'sigma':1}],
-        # ['gaussmf',{'mean':0,'sigma':1}],
-        # ['gaussmf',{'mean':1,'sigma':1}]] # Irony Score
-    ]
+        [
+            ['gaussmf', {'mean': 0, 'sigma': 0.2}],  # No exclamations
+            ['gaussmf', {'mean': 0.65, 'sigma': 0.6}]  # Some exclamations (e.g., mean and beyond)
+        ],
+        [
+            ['gaussmf', {'mean': 0, 'sigma': 0.15}],  # No questions
+            ['gaussmf', {'mean': 1, 'sigma': 0.5}]    # Some questions (mean or slightly beyond)
+        ],
+        [
+            ['gaussmf', {'mean': 0.5, 'sigma': 0.15}],  # Low objectivity
+            ['gaussmf', {'mean': 0.75, 'sigma': 0.1}],  # Medium objectivity
+            ['gaussmf', {'mean': 0.9, 'sigma': 0.1}]    # High objectivity
+        ],
+        [
+            ['gaussmf', {'mean': 0, 'sigma': 0.1}],  # No joy
+            ['gaussmf', {'mean': 0.3, 'sigma': 0.2}]  # Some joy
+        ],
+        [
+            ['gaussmf', {'mean': 0, 'sigma': 0.1}],  # Neutral/No negativity
+            ['gaussmf', {'mean': 0.5, 'sigma': 0.2}],  # Some negativity
+            ['gaussmf', {'mean': 1, 'sigma': 0.1}]     # Strong negativity
+        ],
+        [
+            ['gaussmf', {'mean': 0, 'sigma': 0.1}],  # Neutral/No positivity
+            ['gaussmf', {'mean': 0.5, 'sigma': 0.2}],  # Some positivity
+            ['gaussmf', {'mean': 1, 'sigma': 0.1}]     # Strong positivity
+        ]
+        ]
+    
+    # mf = [
+    #     # [['gaussmf',{'mean':-1,'sigma':1}],
+    #     # ['gaussmf',{'mean':1,'sigma':1}]], 
+    #     # [['gaussmf',{'mean':-1,'sigma':1}],
+    #     # ['gaussmf',{'mean':1,'sigma':1}]], # question_score
+    #     # [['gaussmf',{'mean':-1,'sigma':1}],
+    #     # ['gaussmf',{'mean':1,'sigma':1}]], # ellipsis_score
+    #     # [['gaussmf',{'mean':-1,'sigma':1}],
+    #     # ['gaussmf',{'mean':1,'sigma':1}]], # comma_score
+    #     # [['gaussmf',{'mean':-1,'sigma':1}],
+    #     # ['gaussmf',{'mean':1,'sigma':1}]], # period_score
+    #     [['gaussmf',{'mean':-1,'sigma':1}],
+    #     ['gaussmf',{'mean':0,'sigma':1}],
+    #     ['gaussmf',{'mean':1,'sigma':1}]], # Subjectivity Score
+    #     [['gaussmf',{'mean':-1,'sigma':1}],
+    #     ['gaussmf',{'mean':0,'sigma':1}],
+    #     ['gaussmf',{'mean':1,'sigma':1}]] # polarity_score
+    #     # [['gaussmf',{'mean':-2,'sigma':1}],
+    #     # ['gaussmf',{'mean':-1,'sigma':1}],
+    #     # ['gaussmf',{'mean':0,'sigma':1}],
+    #     # ['gaussmf',{'mean':1,'sigma':1}],
+    #     # ['gaussmf',{'mean':2,'sigma':1}]], # afinn_score
+    #     # [['gaussmf',{'mean':-1,'sigma':1}],
+    #     # ['gaussmf',{'mean':1,'sigma':1}]], # Negation Score
+    #     # [['gaussmf',{'mean':-1,'sigma':1}],
+    #     # ['gaussmf',{'mean':0,'sigma':1}],
+    #     # ['gaussmf',{'mean':1,'sigma':1}]], # Sarcasm Score
+    #     # [['gaussmf',{'mean':-1,'sigma':1}],
+    #     # ['gaussmf',{'mean':0,'sigma':1}],
+    #     # ['gaussmf',{'mean':1,'sigma':1}]] # Irony Score
+    # ]
     
     
     mfc = membershipfunction.MemFuncs(mf)
@@ -98,8 +118,8 @@ def doAnfis(processed_data):
     anf.plotResults()
     return anf
 
-if os.path.isfile('code/processed_data_V2.csv'):
-    processed_data = pd.read_csv('code/processed_data_V2.csv')
+if os.path.isfile('code/anfis_input.csv'):
+    processed_data = pd.read_csv('code/anfis_input.csv')
     print("Data loaded")
     anfis = doAnfis(processed_data=processed_data)
     print("ANFIS completed")
