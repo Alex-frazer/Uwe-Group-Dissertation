@@ -14,7 +14,6 @@ https://saifmohammad.com/WebDocs/Lexicons/NRC-Emotion-Lexicon.zip
 https://saifmohammad.com/WebDocs/Lexicons/NRC-Emotion-Intensity-Lexicon.zip
 https://saifmohammad.com/WebDocs/Lexicons/NRC-VAD-Lexicon.zip
 
-# TODO: Chris - where did you download your lexicon file for emotions? 
 
 Please use code/Lexicon-based.ipynb for feature engineering and extraction
 This will generate anfis_output.csv once compelte.
