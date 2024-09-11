@@ -140,6 +140,7 @@ class ANFIS:
         else:
             import matplotlib.pyplot as plt
             plt.plot(range(len(self.errors)),self.errors,'ro', label='errors')
+            plt.plot(range(len(self.errors)), self.errors, 'r-', label='Error trend')
             plt.ylabel('error')
             plt.xlabel('epoch')
             plt.show()
