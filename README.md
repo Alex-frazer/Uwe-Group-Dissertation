@@ -9,6 +9,10 @@ Please use code/Feature-Extraction.ipynb for the following parts of code.
  - Fuzzy rules and memberships output.
 
 
+See file bidirectional-lstm-attention.ipynb for the reproduction of the Model propossed here:
+https://onlinelibrary.wiley.com/doi/full/10.1002/spe.2853       DOI: 10.1002/spe.2853
+as mentioned within the supporting paper
+
 Lexicons is an untracked folder - 
 download these zips and put the unzipped folders into the Lexicons/ directory.
 https://saifmohammad.com/WebDocs/Lexicons/NRC-Emotion-Lexicon.zip
